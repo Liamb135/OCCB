@@ -3,7 +3,7 @@
 // @namespace       https://www.deviantart.com/liamb135
 // @description     Adds a give Cake button after the names of every Deviant and Group.
 // @author          Liamb135 | https://www.deviantart.com/liamb135
-// @version         2.0.1
+// @version         2.0.2
 // @icon            data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAASCAYAAABb0P4QAAAACXBIWXMAAAsTAAALEwEAmpwYAAACB0lEQVQ4jZ2SvU9TYRSHn/e2t/QDSqoGlosuJXa6TBJ2/wMTIgziZkJMUBdjU0ycNHYyJH6wslgYmujg5ubg4kAHJYEm8jGgCdpAb7W2vcfh9r60QG+Nv+QmJ+fjec895yAiiAh22hJAAPF9//MdGyC17QWx01ZP4OGrK30fMybGx2RifEzstAVAaWsP30eHjpYnJWpf4Gh5sst/UuHS1h617QXt8O34paVTySoTh1IQDsJ+sZ22+Pj+GlNXi6eSZm6MyNS5BBuf7pD5vMjdIKCIKIDOX1zf3FWdsHz+Ma4Lt4rveHA/x+zcqM59vfJNdQJVeyEopQTATlsa6MPKuwUMJdx8dpm13A6ppKUBD7NFlFIaroEnNTs3KvmnS3z5+gIAM2RiKCGWiDEQNaFdNxi9qGsWs6v0BN6esWX63hB/3DDlzSoAw0MJwmYoYILtpfSSYSj2dw6Zv/4EgJ+VGqmk6QVDCQDcxg8Aqo5DYe1NMLBLzTKpQcCF/e9VRs4bGKE4tGoA1J2K10QQIzJwdlgpPNgZ6tmhoRSq5dkvV3P9+qde/UWcTG+gK0Ik5i1gfvoRrlvviovbRBnH5f80w0bTbbdrQmND+5uN39qORLxH644D9NlyzWlq++CgwnAy6hWZUT1Dt70UX33PBmDlbTYoTWv9Q6v3YYN33OAtyA3I8/W8UFJ/ASNLIgCpZsHzAAAAAElFTkSuQmCC
 // @match           *://*.deviantart.com/*
 // @match           *://*.sta.sh/*
@@ -35,26 +35,29 @@
     const IMG = IMG_1X;
 
     const STYLE = `
-      span.occb {
-          display:inline-block;
-          pointer-events:all;
-          width:18px;
-          height:18px;
-          vertical-align:middle;
-          margin:0 3px;
-          cursor:default;
-          transition:.3s all;
-      }
-      span.occb-give { background:url(${IMG.GIVE}) center no-repeat; cursor:pointer; }
-      span.occb-giving { background:url(${IMG.GIVING}) center no-repeat; cursor:progress; }
-      span.occb-batch-giving {background: url(${IMG.BATCH_GIVING}) center no-repeat; cursor: progress; }
-      span.occb-already { background:url(${IMG.ALREADY}) center no-repeat; margin:0; }
-      span.occb-success { background:url(${IMG.SUCCESS}) center no-repeat; width:26px; }
-      span.occb-error { background:url(${IMG.ERROR}) center no-repeat; cursor:pointer; }
-      span.occb-token_miss { background:url(${IMG.TOKEN_MISS}) center no-repeat; cursor:pointer; }
-      span.occb-spam { background:url(${IMG.SPAM}) center no-repeat; cursor:pointer; width:25px; }
-      span.occb-unknown { background:url(${IMG.UNKNOWN}) center no-repeat; cursor:help; }
-      span.occb-enough { background:url(${IMG.ENOUGH}) center no-repeat; }
+        span.occb {
+        display:inline-block;
+        pointer-events:all;
+        image-rendering:pixelated;
+        image-rendering:-moz-crisp-edges;
+        image-rendering:crisp-edges;
+        height:18px;
+        vertical-align:middle;
+        margin:0 3px;
+        cursor:default;
+        transition:.3s all;
+        }
+
+        span.occb-give { background:url(${IMG.GIVE}) center no-repeat; width:20px; cursor:pointer; }
+        span.occb-giving { background:url(${IMG.GIVING}) center no-repeat; width:14px; cursor:progress; }
+        span.occb-batch-giving { background:url(${IMG.BATCH_GIVING}) center no-repeat; width:20px; cursor:progress; }
+        span.occb-already { background:url(${IMG.ALREADY}) center no-repeat; width:8px; margin:0; }
+        span.occb-success { background:url(${IMG.SUCCESS}) center no-repeat; width:28px; }
+        span.occb-error { background:url(${IMG.ERROR}) center no-repeat; width:20px; cursor:pointer; }
+        span.occb-token_miss { background:url(${IMG.TOKEN_MISS}) center no-repeat; width:14px; cursor:pointer; }
+        span.occb-spam { background:url(${IMG.SPAM}) center no-repeat; width:25px; cursor:pointer; }
+        span.occb-unknown { background:url(${IMG.UNKNOWN}) center no-repeat; width:14px; cursor:help; }
+        span.occb-enough { background:url(${IMG.ENOUGH}) center no-repeat; width:8px; }
     `;
 
     const TITLES = {
