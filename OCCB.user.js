@@ -37,7 +37,6 @@
         display:inline-block;
         pointer-events:all;
         image-rendering:pixelated;
-        image-rendering:-moz-crisp-edges;
         image-rendering:crisp-edges;
         height:18px;
         vertical-align:middle;
