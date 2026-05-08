@@ -3,7 +3,7 @@
 // @namespace       https://www.deviantart.com/liamb135
 // @description     Adds a give Cake button after the names of every Deviant and Group.
 // @author          Liamb135 | https://www.deviantart.com/liamb135
-// @version         2.0.2
+// @version         2.0.3
 // @icon            data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAASCAYAAABb0P4QAAAACXBIWXMAAAsTAAALEwEAmpwYAAACB0lEQVQ4jZ2SvU9TYRSHn/e2t/QDSqoGlosuJXa6TBJ2/wMTIgziZkJMUBdjU0ycNHYyJH6wslgYmujg5ubg4kAHJYEm8jGgCdpAb7W2vcfh9r60QG+Nv+QmJ+fjec895yAiiAh22hJAAPF9//MdGyC17QWx01ZP4OGrK30fMybGx2RifEzstAVAaWsP30eHjpYnJWpf4Gh5sst/UuHS1h617QXt8O34paVTySoTh1IQDsJ+sZ22+Pj+GlNXi6eSZm6MyNS5BBuf7pD5vMjdIKCIKIDOX1zf3FWdsHz+Ma4Lt4rveHA/x+zcqM59vfJNdQJVeyEopQTATlsa6MPKuwUMJdx8dpm13A6ppKUBD7NFlFIaroEnNTs3KvmnS3z5+gIAM2RiKCGWiDEQNaFdNxi9qGsWs6v0BN6esWX63hB/3DDlzSoAw0MJwmYoYILtpfSSYSj2dw6Zv/4EgJ+VGqmk6QVDCQDcxg8Aqo5DYe1NMLBLzTKpQcCF/e9VRs4bGKE4tGoA1J2K10QQIzJwdlgpPNgZ6tmhoRSq5dkvV3P9+qde/UWcTG+gK0Ik5i1gfvoRrlvviovbRBnH5f80w0bTbbdrQmND+5uN39qORLxH644D9NlyzWlq++CgwnAy6hWZUT1Dt70UX33PBmDlbTYoTWv9Q6v3YYN33OAtyA3I8/W8UFJ/ASNLIgCpZsHzAAAAAElFTkSuQmCC
 // @match           *://*.deviantart.com/*
 // @match           *://*.sta.sh/*
@@ -62,14 +62,16 @@
         giving: 'Giving Cake...',
         already: 'Already gave a Cake',
         enough: 'Has Cakes enough for love (max 20)',
-        token_miss: 'CSRF token not found. Please refresh the page and try again.',
+        token_miss: 'CSRF token not found. Please clear site data and try again.',
+        spam: 'Cake badges are being given too quickly!',
+        error: 'Error giving Cake. Click to retry.',
         unknown: {
             loading: 'This Deviant\'s Cake status is a mystery! (Loading...)',
             err_network: 'Cake status error: Network error',
             err_dev_id: 'Cake status error: Invalid Deviant ID',
             err_server_response: 'Cake status error: Invalid server response',
         },
-        spam: 'Cake badges are being given too quickly! Please wait 60 seconds.',
+
     };
 
     function addCSS(css) {
@@ -389,7 +391,7 @@
                     setButtonsState(devName, 'batch-giving', `Cake given! (${giveCount}/20)`);
                 }
 
-                await delay(2500);
+                await delay(500);
 
                 token = await getCsrfToken();
                 if (!token) {
@@ -432,7 +434,7 @@
                 setButtonsState(devName, 'error', sendResult.errorDescription);
                 return;
             } else {
-                setButtonsState(devName, 'success', 'Cake given!');
+                setButtonsState(devName, 'success', 'Cake given successfully!');
             }
 
             await delay(5000);
@@ -680,7 +682,7 @@
         }
     } catch (err) {
         console.error('One Click Cake Button error:', err,
-            '\n\nPlease send a note here with details:\nhttps://www.deviantart.com/notifications/notes/#to=Liamb135');
+            '\n\nPlease send a note here with details:\nhttps://www.deviantart.com/messages?to=Liamb135');
     }
 
 })();
