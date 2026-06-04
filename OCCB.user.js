@@ -3,10 +3,9 @@
 // @namespace       https://www.deviantart.com/liamb135
 // @description     Adds a give Cake button after the names of every Deviant and Group.
 // @author          Liamb135 | https://www.deviantart.com/liamb135
-// @version         2.0.3
+// @version         2.1.0
 // @icon            data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAASCAYAAABb0P4QAAAACXBIWXMAAAsTAAALEwEAmpwYAAACB0lEQVQ4jZ2SvU9TYRSHn/e2t/QDSqoGlosuJXa6TBJ2/wMTIgziZkJMUBdjU0ycNHYyJH6wslgYmujg5ubg4kAHJYEm8jGgCdpAb7W2vcfh9r60QG+Nv+QmJ+fjec895yAiiAh22hJAAPF9//MdGyC17QWx01ZP4OGrK30fMybGx2RifEzstAVAaWsP30eHjpYnJWpf4Gh5sst/UuHS1h617QXt8O34paVTySoTh1IQDsJ+sZ22+Pj+GlNXi6eSZm6MyNS5BBuf7pD5vMjdIKCIKIDOX1zf3FWdsHz+Ma4Lt4rveHA/x+zcqM59vfJNdQJVeyEopQTATlsa6MPKuwUMJdx8dpm13A6ppKUBD7NFlFIaroEnNTs3KvmnS3z5+gIAM2RiKCGWiDEQNaFdNxi9qGsWs6v0BN6esWX63hB/3DDlzSoAw0MJwmYoYILtpfSSYSj2dw6Zv/4EgJ+VGqmk6QVDCQDcxg8Aqo5DYe1NMLBLzTKpQcCF/e9VRs4bGKE4tGoA1J2K10QQIzJwdlgpPNgZ6tmhoRSq5dkvV3P9+qde/UWcTG+gK0Ik5i1gfvoRrlvviovbRBnH5f80w0bTbbdrQmND+5uN39qORLxH644D9NlyzWlq++CgwnAy6hWZUT1Dt70UX33PBmDlbTYoTWv9Q6v3YYN33OAtyA3I8/W8UFJ/ASNLIgCpZsHzAAAAAElFTkSuQmCC
 // @match           *://*.deviantart.com/*
-// @match           *://*.sta.sh/*
 // @grant           GM_getValue
 // @grant           GM_setValue
 // @run-at          document-end
@@ -16,7 +15,7 @@
 
 //                  Inspired by Kishan Bagaria's One Click Llama Button 💚
 
-(function() {
+(() => {
     'use strict';
 
     const IMG = {
@@ -44,6 +43,10 @@
         cursor:default;
         transition:.3s all;
         }
+        span.occb-removing {
+            opacity: 0 !important;
+            transition: opacity 0.2s ease !important;
+        }
 
         span.occb-give { background:url(${IMG.GIVE}) center no-repeat; width:20px; cursor:pointer; }
         span.occb-giving { background:url(${IMG.GIVING}) center no-repeat; width:14px; cursor:progress; }
@@ -62,39 +65,33 @@
         giving: 'Giving Cake...',
         already: 'Already gave a Cake',
         enough: 'Has Cakes enough for love (max 20)',
-        token_miss: 'CSRF token not found. Please clear site data and try again.',
+        token_miss: 'CSRF token not found. Please clear cache the page and try again.',
         spam: 'Cake badges are being given too quickly!',
         error: 'Error giving Cake. Click to retry.',
         unknown: {
             loading: 'This Deviant\'s Cake status is a mystery! (Loading...)',
             err_network: 'Cake status error: Network error',
             err_dev_id: 'Cake status error: Invalid Deviant ID',
-            err_server_response: 'Cake status error: Invalid server response',
-        },
-
+            err_server_response: 'Cake status error: Invalid server response'
+        }
     };
 
-    function addCSS(css) {
-        const styleElem = document.createElement('style');
-        styleElem.textContent = css;
-        document.head.appendChild(styleElem);
-    }
+    const addCSS = css => {
+        document.head.appendChild(document.createElement('style')).textContent = css;
+    };
 
-    function delay(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
+    const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-
-    function cakeStorage(action, key, value) {
-        const prefixedKey = 'cake-' + key;
+    const cakeStorage = (action, key, value) => {
+        const prefixedKey = `cake-${key}`;
         try {
             if (action === 'set') return window.localStorage.setItem(prefixedKey, value);
             if (action === 'get') return window.localStorage.getItem(prefixedKey);
         } catch {}
         return null;
-    }
+    };
 
-    function setting(key, value) {
+    const setting = (key, value) => {
         if (value !== undefined) {
             if (typeof GM_setValue !== 'undefined') GM_setValue(key, value);
         } else {
@@ -103,22 +100,23 @@
                 showIn: '*',
                 showPos: 'after',
                 addForGroups: 'true',
-                animation: 'true',
+                animation: 'true'
             };
             return DEFAULTS[key];
         }
-    }
+    };
 
     let csrfTokenCache = null;
     let csrfTokenCacheTime = 0;
     const CSRF_CACHE_DURATION = 30 * 60 * 1000;
 
-    function getTokenFromDOM(doc) {
-        let scripts = doc.scripts;
+    const getTokenFromDOM = doc => {
+        const {
+            scripts
+        } = doc;
         if (scripts) {
-            for (let i = 0; i < scripts.length; i++) {
-                const current = scripts[i];
-                if (current.innerHTML && current.innerHTML.includes('window.__CSRF_TOKEN__')) {
+            for (const current of scripts) {
+                if (current.innerHTML?.includes('window.__CSRF_TOKEN__')) {
                     const htmlChunks = current.innerHTML.split('window.__CSRF_TOKEN__');
                     const splitForToken = htmlChunks[1].split(/'/);
                     const token = splitForToken[1];
@@ -129,7 +127,7 @@
 
         try {
             const logoutForm = doc.querySelector("#logout-form input[type='hidden']");
-            if (logoutForm && logoutForm.value) return logoutForm.value;
+            if (logoutForm?.value) return logoutForm.value;
         } catch (e) {}
 
         try {
@@ -138,9 +136,9 @@
         } catch (e) {}
 
         return null;
-    }
+    };
 
-    async function getCsrfToken() {
+    const getCsrfToken = async () => {
         const now = Date.now();
 
         if (csrfTokenCache && (now - csrfTokenCacheTime) < CSRF_CACHE_DURATION) {
@@ -164,8 +162,7 @@
         }
 
         try {
-            const apiUrl = 'https://www.deviantart.com/';
-            const response = await fetch(apiUrl, {
+            const response = await fetch('https://www.deviantart.com/', {
                 credentials: 'include',
                 cache: 'no-store'
             });
@@ -197,57 +194,57 @@
         } catch (e) {}
 
         return null;
-    }
+    };
 
-    function getLoggedInDevName() {
-        if (window.deviantART && window.deviantART.deviant && window.deviantART.deviant.username) {
-            return window.deviantART.deviant.username.toLowerCase();
-        }
+    const getLoggedInDevName = () => {
         const eclipseElem = document.querySelector('header a[data-username]');
-        if (eclipseElem) return eclipseElem.getAttribute('data-username').toLowerCase();
+        return eclipseElem?.getAttribute('data-username')?.toLowerCase();
+    };
 
-        const userinfo = document.cookie.split(';').find(c => c.trim().startsWith('userinfo='));
-        if (userinfo) {
-            try {
-                return JSON.parse(decodeURIComponent(userinfo.split('=')[1])).username.toLowerCase();
-            } catch {}
-        }
-        return null;
-    }
+    const waitForLoggedInDevName = (timeoutMs = 5000) => new Promise(resolve => {
+        const intervalMs = 100;
+        let elapsed = 0;
 
-    function waitForLoggedInDevName(timeoutMs = 5000) {
-        return new Promise(resolve => {
-            const intervalMs = 100;
-            let elapsed = 0;
-            (function check() {
-                const u = getLoggedInDevName();
-                if (u) resolve(u);
-                else if (elapsed >= timeoutMs) resolve(null);
-                else {
-                    elapsed += intervalMs;
-                    setTimeout(check, intervalMs);
+        const check = () => {
+            const u = getLoggedInDevName() || (() => {
+                const userinfo = document.cookie.split(';').find(c => c.trim().startsWith('userinfo='));
+                if (userinfo) {
+                    try {
+                        return JSON.parse(decodeURIComponent(userinfo.split('=')[1])).username.toLowerCase();
+                    } catch {}
                 }
+                return null;
             })();
-        });
-    }
+            if (u) {
+                resolve(u);
+            } else if (elapsed >= timeoutMs) {
+                resolve(null);
+            } else {
+                elapsed += intervalMs;
+                setTimeout(check, intervalMs);
+            }
+        };
+
+        check();
+    });
 
     let cakeLastStates = {};
     let cakeSpamTimeouts = {};
     let loggedInDev = null;
 
-    function setButtonState(button, className, title) {
-        button.className = 'occb occb-' + className;
+    const setButtonState = (button, className, title) => {
+        button.className = `occb occb-${className}`;
         button.title = title || TITLES[className];
-    }
+    };
 
-    function saveLastState(devName, className, title) {
+    const saveLastState = (devName, className, title) => {
         if (className !== 'unknown') cakeLastStates[devName] = {
             className,
             title
         };
-    }
+    };
 
-    function setButtonsState(devName, className, title, skipStorage) {
+    const setButtonsState = (devName, className, title, skipStorage) => {
         if (!skipStorage) {
             cakeStorage('set', 'sbsCall', JSON.stringify({
                 loggedInDev,
@@ -256,7 +253,7 @@
                 title
             }));
         }
-        if (cakeSpamTimeouts[devName]) clearTimeout(cakeSpamTimeouts[devName]);
+        if (Object.hasOwn(cakeSpamTimeouts, devName)) clearTimeout(cakeSpamTimeouts[devName]);
         if (className === 'spam') {
             cakeSpamTimeouts[devName] = setTimeout(() => {
                 setButtonsState(devName, 'give', null, true);
@@ -265,9 +262,9 @@
         saveLastState(devName, className, title);
         document.querySelectorAll(`span.occb[data-cake-devname="${devName}"]`)
             .forEach(button => setButtonState(button, className, title));
-    }
+    };
 
-    async function sendCakeBadge(token, devNameReg, devName) {
+    const sendCakeBadge = async (token, devNameReg, devName) => {
         const url = 'https://www.deviantart.com/_puppy/dashared/badges/give';
         const params = {
             foruser: devNameReg,
@@ -292,9 +289,9 @@
                 errorDescription: 'Network error'
             };
         }
-    }
+    };
 
-    async function checkCakeStatus(devName, token) {
+    const checkCakeStatus = async (devName, token) => {
         const statusUrl = `https://www.deviantart.com/_puppy/dauserprofile/give_menu/status?username=${encodeURIComponent(devName)}&csrf_token=${encodeURIComponent(token)}`;
         try {
             const res = await fetch(statusUrl, {
@@ -304,10 +301,9 @@
         } catch {
             return null;
         }
-    }
+    };
 
-    function disableOtherButtons(activeDevName) {
-
+    const disableOtherButtons = activeDevName => {
         document.querySelectorAll('span.occb[data-cake-devname]').forEach(button => {
             const devName = button.getAttribute('data-cake-devname');
             if (devName !== activeDevName) {
@@ -317,9 +313,9 @@
                 button.style.pointerEvents = 'all';
             }
         });
-    }
+    };
 
-    function enableAllButtons() {
+    const enableAllButtons = () => {
         document.querySelectorAll('span.occb[data-cake-devname]').forEach(button => {
             const devName = button.getAttribute('data-cake-devname');
             if (cakeLastStates[devName]) {
@@ -329,9 +325,9 @@
             }
             button.style.pointerEvents = 'all';
         });
-    }
+    };
 
-    async function cakeButtonClicked(event) {
+    const cakeButtonClicked = async function(event) {
         event.preventDefault();
         event.stopPropagation();
 
@@ -391,7 +387,7 @@
                     setButtonsState(devName, 'batch-giving', `Cake given! (${giveCount}/20)`);
                 }
 
-                await delay(500);
+                await delay(2500);
 
                 token = await getCsrfToken();
                 if (!token) {
@@ -461,21 +457,21 @@
                 setButtonsState(devName, 'unknown', TITLES.unknown.err_server_response);
             }
         }
-    }
+    };
 
-    function getDevName(link, lower = true) {
+    const getDevName = (link, lower = true) => {
         const eclipseUsername = link.getAttribute('data-username');
         if (eclipseUsername) return lower ? eclipseUsername.toLowerCase() : eclipseUsername;
 
         let m = /([a-zA-Z0-9-]+)\.deviantart\.com/.exec(link.href);
-        if (m && m[1] !== 'www') return lower ? m[1].toLowerCase() : m[1];
+        if (m?.[1] !== 'www' && m?.[1]) return lower ? m[1].toLowerCase() : m[1];
         m = /www\.deviantart\.com\/([a-zA-Z0-9-]+)/.exec(link.href);
-        return m ? (lower ? m[1].toLowerCase() : m[1]) : null;
-    }
+        return m?.[1] ? (lower ? m[1].toLowerCase() : m[1]) : null;
+    };
 
-    function initCakeButton(button, devName) {
+    const initCakeButton = (button, devName) => {
         button.onclick = cakeButtonClicked;
-        if (cakeLastStates[devName]) {
+        if (Object.hasOwn(cakeLastStates, devName)) {
             setButtonState(button, cakeLastStates[devName].className, cakeLastStates[devName].title);
         } else if (cakeStorage('get', `${loggedInDev}|${devName}`)) {
             setButtonState(button, 'already');
@@ -485,13 +481,13 @@
             setButtonState(button, 'unknown', TITLES.unknown.loading);
             askServerForStatus(button, devName);
         }
-    }
+    };
 
     let cakeButtonsToUpdate = {};
     let cakeDevIDs = {};
 
-    function askServerForStatus(button, devName) {
-        if (cakeButtonsToUpdate[devName]) {
+    const askServerForStatus = (button, devName) => {
+        if (Object.hasOwn(cakeButtonsToUpdate, devName)) {
             cakeButtonsToUpdate[devName].push(button);
         } else {
             cakeButtonsToUpdate[devName] = [button];
@@ -502,9 +498,9 @@
                 delete cakeButtonsToUpdate[devName];
             });
         }
-    }
+    };
 
-    function getGiveMenu(devName, callback) {
+    const getGiveMenu = (devName, callback) => {
         getCsrfToken()
             .then(csrfToken => {
                 if (!csrfToken) {
@@ -532,22 +528,18 @@
                     .catch(() => callback(0, 'unknown', TITLES.unknown.err_network));
             })
             .catch(() => callback(0, 'token_miss', TITLES.token_miss));
-    }
+    };
 
-    function addCakeButton(devNameLink) {
-        if (devNameLink.classList && devNameLink.classList.contains('banned')) return;
+    const addCakeButton = devNameLink => {
+        if (devNameLink.classList?.contains('banned')) return;
 
-        let devName, devNameReg;
-        if (devNameLink.tagName.toLowerCase() === 'span') {
-            devName = devNameLink.innerText.toLowerCase();
-            devNameReg = devNameLink.innerText;
-        } else {
-            devName = getDevName(devNameLink, true);
-            devNameReg = getDevName(devNameLink, false);
-        }
+        const isSpan = devNameLink.tagName.toLowerCase() === 'span';
+        const devName = isSpan ? devNameLink.innerText.toLowerCase() : getDevName(devNameLink, true);
+        const devNameReg = isSpan ? devNameLink.innerText : getDevName(devNameLink, false);
+
         if (!devName || !loggedInDev || devName === loggedInDev) return;
 
-        if (devNameLink.parentNode && devNameLink.parentNode.querySelector(`span.occb[data-cake-devname="${devName}"]`)) return;
+        if (devNameLink.parentNode?.querySelector(`span.occb[data-cake-devname="${devName}"]`)) return;
 
         const btn = document.createElement('span');
         btn.setAttribute('data-cake-devname', devName);
@@ -559,29 +551,22 @@
         initCakeButton(btn, devName);
 
         const pos = setting('showPos') === 'before' ? 'before' : 'after';
-
         let ref;
 
-        const oclbButton = devNameLink.parentNode ? devNameLink.parentNode.querySelector(`span.oclb[devName="${devName}"]`) : null;
+        const oclbButton = devNameLink.parentNode?.querySelector(`span.oclb[devName="${devName}"]`);
 
         if (pos === 'after') {
-            if (oclbButton) {
-                ref = oclbButton.nextSibling;
-            } else {
-                ref = devNameLink.nextSibling;
-            }
+            ref = oclbButton ? oclbButton.nextSibling : devNameLink.nextSibling;
         } else {
             ref = devNameLink;
         }
 
-        if (pos === 'after' && ref && ref.classList && ref.classList.contains('user-symbol')) {
+        if (pos === 'after' && ref?.classList?.contains('user-symbol')) {
             ref = ref.nextSibling;
         }
 
-        if (devNameLink.parentNode) {
-            devNameLink.parentNode.insertBefore(btn, ref);
-        }
-    }
+        devNameLink.parentNode?.insertBefore(btn, ref);
+    };
 
     const usernameSelector =
         setting('addForGroups') === 'true' ?
@@ -594,28 +579,130 @@
     const membersSelector = '#group_members div > span';
     const adminSelector = '#group_admins div > span';
 
-    function scanAndAddButtons() {
-        [badgesLinkSelector, usernameSelector, watchersSelector, watchingSelector, membersSelector, adminSelector]
-        .forEach(sel => {
-            document.querySelectorAll(sel).forEach(addCakeButton);
-        });
-    }
+    const allSelectors = [
+        badgesLinkSelector,
+        usernameSelector,
+        watchersSelector,
+        watchingSelector,
+        membersSelector,
+        adminSelector
+    ];
 
-    function observeDOMChanges() {
+    let scrollTimeout;
+    let processThrottle;
+    let scrollBindDebounce;
+
+    const isInOrNearViewport = el => {
+        const rect = el.getBoundingClientRect();
+        return rect.top < window.innerHeight + 1500 && rect.bottom > -1500;
+    };
+
+    const processVisibleElements = () => {
+        if (processThrottle) return;
+        processThrottle = requestAnimationFrame(() => {
+            processThrottle = null;
+            allSelectors.forEach(sel => {
+                document.querySelectorAll(sel).forEach(el => {
+                    const devName = el.tagName.toLowerCase() === 'span' ? el.textContent.toLowerCase() : getDevName(el, true);
+                    if (!devName || devName === loggedInDev) return;
+
+                    const hasFound = el.getAttribute('data-occb-found');
+                    const existingBtn = el.parentNode?.querySelector(`span.occb[data-cake-devname="${devName}"]`);
+                    const inViewport = isInOrNearViewport(el);
+
+                    if (inViewport) {
+                        if (!hasFound) {
+                            el.setAttribute('data-occb-found', '1');
+                            if (!existingBtn) {
+                                addCakeButton(el);
+                                const btn = el.parentNode?.querySelector(`span.occb[data-cake-devname="${devName}"]`);
+                                if (btn) {
+                                    btn.style.opacity = '0';
+                                    btn.style.transition = 'opacity 0.3s ease';
+                                    requestAnimationFrame(() => {
+                                        btn.style.opacity = '1';
+                                    });
+                                }
+                            }
+                        }
+                    } else if (existingBtn && !existingBtn._removing) {
+                        existingBtn._removing = true;
+                        existingBtn.classList.add('occb-removing');
+                        setTimeout(() => {
+                            existingBtn.remove();
+                        }, 200);
+                        el.removeAttribute('data-occb-found');
+                    }
+                });
+            });
+        });
+    };
+
+    const attachScrollListeners = () => {
+        const onScroll = () => {
+            clearTimeout(scrollTimeout);
+            scrollTimeout = setTimeout(processVisibleElements, 150);
+        };
+
+        window.addEventListener('scroll', onScroll, {
+            passive: true
+        });
+        document.addEventListener('scroll', onScroll, {
+            passive: true,
+            capture: true
+        });
+
+        const findAndBindScrollables = () => {
+            clearTimeout(scrollBindDebounce);
+            scrollBindDebounce = setTimeout(() => {
+                const allElements = document.querySelectorAll('div, section, main, article, [role="main"]');
+                for (const el of allElements) {
+                    if (el._occbScrollBound) continue;
+                    if (el.scrollHeight > el.clientHeight && el.clientHeight > 0) {
+                        el._occbScrollBound = true;
+                        el.addEventListener('scroll', onScroll, {
+                            passive: true
+                        });
+                    }
+                }
+            }, 500);
+        };
+
+        findAndBindScrollables();
+
+        new MutationObserver(() => {
+            findAndBindScrollables();
+        }).observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+    };
+
+    const scanAndAddButtons = () => {
+        processVisibleElements();
+        attachScrollListeners();
+    };
+
+    const observeDOMChanges = () => {
         const observer = new MutationObserver(mutations => {
             mutations.forEach(m => {
                 m.addedNodes.forEach(node => {
                     if (node.nodeType !== 1) return;
-                    [
-                        badgesLinkSelector,
-                        usernameSelector,
-                        watchersSelector,
-                        watchingSelector,
-                        membersSelector,
-                        adminSelector,
-                    ].forEach(sel => {
-                        if (node.matches && node.matches(sel)) addCakeButton(node);
-                        if (node.querySelectorAll) node.querySelectorAll(sel).forEach(addCakeButton);
+                    allSelectors.forEach(sel => {
+                        if (node.matches?.(sel)) {
+                            if (!node.getAttribute('data-occb-found') && isInOrNearViewport(node)) {
+                                node.setAttribute('data-occb-found', '1');
+                                addCakeButton(node);
+                            }
+                        }
+                        if (node.querySelectorAll) {
+                            node.querySelectorAll(sel).forEach(el => {
+                                if (!el.getAttribute('data-occb-found') && isInOrNearViewport(el)) {
+                                    el.setAttribute('data-occb-found', '1');
+                                    addCakeButton(el);
+                                }
+                            });
+                        }
                     });
                 });
             });
@@ -624,9 +711,9 @@
             childList: true,
             subtree: true
         });
-    }
+    };
 
-    async function initWhenReady() {
+    const initWhenReady = async () => {
         loggedInDev = await waitForLoggedInDevName();
         if (!loggedInDev) return;
 
@@ -647,17 +734,22 @@
             document.querySelectorAll(`span.occb[data-cake-devname="${data.devName}"]`)
                 .forEach(button => setButtonState(button, data.className, data.title));
         });
-    }
+    };
 
     try {
-        if (
-            window.location.host.includes('deviantart.com') &&
-            !window.location.host.includes('llamatrade.deviantart.com')
-        ) {
+        if (window.location.host.includes('deviantart.com')) {
             if (window.location.href.includes('/notifications')) {
                 initWhenReady();
             } else {
-                loggedInDev = getLoggedInDevName();
+                loggedInDev = getLoggedInDevName() || (() => {
+                    const userinfo = document.cookie.split(';').find(c => c.trim().startsWith('userinfo='));
+                    if (userinfo) {
+                        try {
+                            return JSON.parse(decodeURIComponent(userinfo.split('=')[1])).username.toLowerCase();
+                        } catch {}
+                    }
+                    return null;
+                })();
                 if (loggedInDev) {
                     addCSS(STYLE);
                     if (setting('animation') !== 'true') addCSS('span.occb{transition:none}');
@@ -682,7 +774,6 @@
         }
     } catch (err) {
         console.error('One Click Cake Button error:', err,
-            '\n\nPlease send a note here with details:\nhttps://www.deviantart.com/messages?to=Liamb135');
+            '\n\nPlease send a note here with details:\nhttps://www.deviantart.com/notifications/notes/#to=Liamb135');
     }
-
 })();
