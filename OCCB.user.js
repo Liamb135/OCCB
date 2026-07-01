@@ -3,7 +3,7 @@
 // @namespace       https://www.deviantart.com/liamb135
 // @description     Adds a give Cake button after the names of every Deviant and Group.
 // @author          Liamb135 | https://www.deviantart.com/liamb135
-// @version         2.1.0
+// @version         2.2.0
 // @icon            data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAASCAYAAABb0P4QAAAACXBIWXMAAAsTAAALEwEAmpwYAAACB0lEQVQ4jZ2SvU9TYRSHn/e2t/QDSqoGlosuJXa6TBJ2/wMTIgziZkJMUBdjU0ycNHYyJH6wslgYmujg5ubg4kAHJYEm8jGgCdpAb7W2vcfh9r60QG+Nv+QmJ+fjec895yAiiAh22hJAAPF9//MdGyC17QWx01ZP4OGrK30fMybGx2RifEzstAVAaWsP30eHjpYnJWpf4Gh5sst/UuHS1h617QXt8O34paVTySoTh1IQDsJ+sZ22+Pj+GlNXi6eSZm6MyNS5BBuf7pD5vMjdIKCIKIDOX1zf3FWdsHz+Ma4Lt4rveHA/x+zcqM59vfJNdQJVeyEopQTATlsa6MPKuwUMJdx8dpm13A6ppKUBD7NFlFIaroEnNTs3KvmnS3z5+gIAM2RiKCGWiDEQNaFdNxi9qGsWs6v0BN6esWX63hB/3DDlzSoAw0MJwmYoYILtpfSSYSj2dw6Zv/4EgJ+VGqmk6QVDCQDcxg8Aqo5DYe1NMLBLzTKpQcCF/e9VRs4bGKE4tGoA1J2K10QQIzJwdlgpPNgZ6tmhoRSq5dkvV3P9+qde/UWcTG+gK0Ik5i1gfvoRrlvviovbRBnH5f80w0bTbbdrQmND+5uN39qORLxH644D9NlyzWlq++CgwnAy6hWZUT1Dt70UX33PBmDlbTYoTWv9Q6v3YYN33OAtyA3I8/W8UFJ/ASNLIgCpZsHzAAAAAElFTkSuQmCC
 // @match           *://*.deviantart.com/*
 // @grant           GM_getValue
@@ -76,11 +76,15 @@
         }
     };
 
+    const GIVE_CACHE_DURATION = 30 * 24 * 60 * 60 * 1000;
+
     const addCSS = css => {
         document.head.appendChild(document.createElement('style')).textContent = css;
     };
 
     const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+    const humanDelay = () => delay(Math.random() * 400 + 100);
 
     const cakeStorage = (action, key, value) => {
         const prefixedKey = `cake-${key}`;
@@ -232,6 +236,60 @@
     let cakeSpamTimeouts = {};
     let loggedInDev = null;
 
+    const getCachedStatus = devName => {
+        if (!loggedInDev) return null;
+        const raw = cakeStorage('get', `status-${loggedInDev}-${devName}`);
+        if (!raw) return null;
+        try {
+            const data = JSON.parse(raw);
+            if (!data || typeof data.status !== 'string') return null;
+            if (data.status === 'enough') return data;
+            if (data.status === 'give' && typeof data.timestamp === 'number') {
+                if (Date.now() - data.timestamp < GIVE_CACHE_DURATION) return data;
+                return null;
+            }
+        } catch {}
+        return null;
+    };
+
+    const setCachedStatus = (devName, status) => {
+        if (!loggedInDev || !status) return;
+        cakeStorage('set', `status-${loggedInDev}-${devName}`, JSON.stringify({
+            status,
+            timestamp: Date.now()
+        }));
+    };
+
+    const clearCachedStatus = devName => {
+        if (!loggedInDev) return;
+        cakeStorage('set', `status-${loggedInDev}-${devName}`, '');
+    };
+
+    const cleanupOldCacheEntries = () => {
+        if (!loggedInDev) return;
+        const prefix = `cake-status-${loggedInDev}-`;
+        const now = Date.now();
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith(prefix)) {
+                try {
+                    const raw = localStorage.getItem(key);
+                    const data = JSON.parse(raw);
+                    if (data && data.status === 'enough') continue;
+                    if (data && data.status === 'give' && typeof data.timestamp === 'number') {
+                        if (now - data.timestamp >= GIVE_CACHE_DURATION) {
+                            localStorage.removeItem(key);
+                        }
+                    } else {
+                        localStorage.removeItem(key);
+                    }
+                } catch {
+                    localStorage.removeItem(key);
+                }
+            }
+        }
+    };
+
     const setButtonState = (button, className, title) => {
         button.className = `occb occb-${className}`;
         button.title = title || TITLES[className];
@@ -265,6 +323,7 @@
     };
 
     const sendCakeBadge = async (token, devNameReg, devName) => {
+        await humanDelay();
         const url = 'https://www.deviantart.com/_puppy/dashared/badges/give';
         const params = {
             foruser: devNameReg,
@@ -292,6 +351,7 @@
     };
 
     const checkCakeStatus = async (devName, token) => {
+        await humanDelay();
         const statusUrl = `https://www.deviantart.com/_puppy/dauserprofile/give_menu/status?username=${encodeURIComponent(devName)}&csrf_token=${encodeURIComponent(token)}`;
         try {
             const res = await fetch(statusUrl, {
@@ -378,6 +438,7 @@
                     }
                     if (sendResult.errorDescription.includes('Cannot give badge to this user')) {
                         setButtonsState(devName, 'already');
+                        setCachedStatus(devName, 'enough');
                         break;
                     }
                     setButtonsState(devName, 'error', sendResult.errorDescription);
@@ -398,14 +459,19 @@
                 const status = await checkCakeStatus(devName, token);
                 if (!status || status.canGiveCake === false) {
                     setButtonsState(devName, 'enough');
+                    setCachedStatus(devName, 'enough');
                     break;
                 }
                 if (status.spamFilter) {
                     setButtonsState(devName, 'spam');
                     break;
                 }
+                if (status.canGiveCake === true) {
+                    setCachedStatus(devName, 'give');
+                }
                 if (giveCount >= 20) {
                     setButtonsState(devName, 'enough', 'Maximum cakes given!');
+                    setCachedStatus(devName, 'enough');
                 }
             }
             window.repeatGiveActive = null;
@@ -425,6 +491,7 @@
                 }
                 if (sendResult.errorDescription.includes('Cannot give badge to this user')) {
                     setButtonsState(devName, 'already');
+                    setCachedStatus(devName, 'enough');
                     return;
                 }
                 setButtonsState(devName, 'error', sendResult.errorDescription);
@@ -451,8 +518,10 @@
                 setTimeout(() => setButtonsState(devName, 'give'), 60000);
             } else if (status.canGiveCake === false) {
                 setButtonsState(devName, 'enough');
+                setCachedStatus(devName, 'enough');
             } else if (status.canGiveCake === true) {
                 setButtonsState(devName, 'give');
+                setCachedStatus(devName, 'give');
             } else {
                 setButtonsState(devName, 'unknown', TITLES.unknown.err_server_response);
             }
@@ -489,24 +558,38 @@
     const askServerForStatus = (button, devName) => {
         if (Object.hasOwn(cakeButtonsToUpdate, devName)) {
             cakeButtonsToUpdate[devName].push(button);
-        } else {
-            cakeButtonsToUpdate[devName] = [button];
-            getGiveMenu(devName, (devID, className, title) => {
-                saveLastState(devName, className, title);
-                if (devID) cakeDevIDs[devName] = devID;
-                cakeButtonsToUpdate[devName].forEach(b => setButtonState(b, className, title));
-                delete cakeButtonsToUpdate[devName];
-            });
+            return;
         }
+
+        cakeButtonsToUpdate[devName] = [button];
+
+        const cached = getCachedStatus(devName);
+        if (cached) {
+            const { status } = cached;
+            const className = status === 'give' ? 'give' : 'enough';
+            const title = status === 'give' ? TITLES.give : TITLES.enough;
+            saveLastState(devName, className, title);
+            cakeButtonsToUpdate[devName].forEach(b => setButtonState(b, className, title));
+            delete cakeButtonsToUpdate[devName];
+            return;
+        }
+
+        getGiveMenu(devName, (devID, className, title) => {
+            saveLastState(devName, className, title);
+            if (devID) cakeDevIDs[devName] = devID;
+            cakeButtonsToUpdate[devName].forEach(b => setButtonState(b, className, title));
+            delete cakeButtonsToUpdate[devName];
+        });
     };
 
     const getGiveMenu = (devName, callback) => {
         getCsrfToken()
-            .then(csrfToken => {
+            .then(async csrfToken => {
                 if (!csrfToken) {
                     callback(0, 'token_miss', TITLES.token_miss);
                     return;
                 }
+                await humanDelay();
                 const url = `https://www.deviantart.com/_puppy/dauserprofile/give_menu/status?username=${encodeURIComponent(devName)}&csrf_token=${encodeURIComponent(csrfToken)}`;
                 fetch(url, {
                         credentials: 'include'
@@ -518,8 +601,10 @@
                             return;
                         }
                         if (data.canGiveCake === false) {
+                            setCachedStatus(devName, 'enough');
                             callback(cakeDevIDs[devName], 'enough', TITLES.enough);
                         } else if (data.canGiveCake === true) {
+                            setCachedStatus(devName, 'give');
                             callback(cakeDevIDs[devName], 'give', TITLES.give);
                         } else {
                             callback(cakeDevIDs[devName], 'unknown', TITLES.unknown.err_server_response);
@@ -717,6 +802,8 @@
         loggedInDev = await waitForLoggedInDevName();
         if (!loggedInDev) return;
 
+        cleanupOldCacheEntries();
+
         addCSS(STYLE);
         if (setting('animation') !== 'true') addCSS('span.occb{transition:none}');
         scanAndAddButtons();
@@ -751,6 +838,8 @@
                     return null;
                 })();
                 if (loggedInDev) {
+                    cleanupOldCacheEntries();
+
                     addCSS(STYLE);
                     if (setting('animation') !== 'true') addCSS('span.occb{transition:none}');
                     scanAndAddButtons();
