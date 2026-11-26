@@ -3,7 +3,7 @@
 // @namespace       https://www.deviantart.com/liamb135
 // @description     Adds a give Cake button after the names of every Deviant and Group.
 // @author          Liamb135 | https://www.deviantart.com/liamb135
-// @version         2.2.0
+// @version         2.3.0
 // @icon            data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAASCAYAAABb0P4QAAAACXBIWXMAAAsTAAALEwEAmpwYAAACB0lEQVQ4jZ2SvU9TYRSHn/e2t/QDSqoGlosuJXa6TBJ2/wMTIgziZkJMUBdjU0ycNHYyJH6wslgYmujg5ubg4kAHJYEm8jGgCdpAb7W2vcfh9r60QG+Nv+QmJ+fjec895yAiiAh22hJAAPF9//MdGyC17QWx01ZP4OGrK30fMybGx2RifEzstAVAaWsP30eHjpYnJWpf4Gh5sst/UuHS1h617QXt8O34paVTySoTh1IQDsJ+sZ22+Pj+GlNXi6eSZm6MyNS5BBuf7pD5vMjdIKCIKIDOX1zf3FWdsHz+Ma4Lt4rveHA/x+zcqM59vfJNdQJVeyEopQTATlsa6MPKuwUMJdx8dpm13A6ppKUBD7NFlFIaroEnNTs3KvmnS3z5+gIAM2RiKCGWiDEQNaFdNxi9qGsWs6v0BN6esWX63hB/3DDlzSoAw0MJwmYoYILtpfSSYSj2dw6Zv/4EgJ+VGqmk6QVDCQDcxg8Aqo5DYe1NMLBLzTKpQcCF/e9VRs4bGKE4tGoA1J2K10QQIzJwdlgpPNgZ6tmhoRSq5dkvV3P9+qde/UWcTG+gK0Ik5i1gfvoRrlvviovbRBnH5f80w0bTbbdrQmND+5uN39qORLxH644D9NlyzWlq++CgwnAy6hWZUT1Dt70UX33PBmDlbTYoTWv9Q6v3YYN33OAtyA3I8/W8UFJ/ASNLIgCpZsHzAAAAAElFTkSuQmCC
 // @match           *://*.deviantart.com/*
 // @grant           GM_getValue
@@ -58,6 +58,8 @@
         span.occb-spam { background:url(${IMG.SPAM}) center no-repeat; width:25px; cursor:pointer; }
         span.occb-unknown { background:url(${IMG.UNKNOWN}) center no-repeat; width:14px; cursor:help; }
         span.occb-enough { background:url(${IMG.ENOUGH}) center no-repeat; width:8px; }
+
+        .oclb-row { display: flex; flex-direction: row; align-items: center; flex-wrap: wrap; }
     `;
 
     const TITLES = {
@@ -77,6 +79,8 @@
     };
 
     const GIVE_CACHE_DURATION = 30 * 24 * 60 * 60 * 1000;
+    const NETWORK_RETRY_MAX = 3;
+    const NETWORK_RETRY_DELAY = 10000;
 
     const addCSS = css => {
         document.head.appendChild(document.createElement('style')).textContent = css;
@@ -236,57 +240,108 @@
     let cakeSpamTimeouts = {};
     let loggedInDev = null;
 
+    const getCacheKey = loggedInDev => `cache-${loggedInDev}`;
+    const getCleanupLastKey = loggedInDev => `cleanup-last-${loggedInDev}`;
+    const getMigrationFlagKey = loggedInDev => `migrated-${loggedInDev}`;
+
     const getCachedStatus = devName => {
         if (!loggedInDev) return null;
-        const raw = cakeStorage('get', `status-${loggedInDev}-${devName}`);
+        const raw = cakeStorage('get', getCacheKey(loggedInDev));
         if (!raw) return null;
         try {
-            const data = JSON.parse(raw);
-            if (!data || typeof data.status !== 'string') return null;
-            if (data.status === 'enough') return data;
-            if (data.status === 'give' && typeof data.timestamp === 'number') {
-                if (Date.now() - data.timestamp < GIVE_CACHE_DURATION) return data;
+            const cache = JSON.parse(raw);
+            const entry = cache[devName];
+            if (!entry || typeof entry.status !== 'string') return null;
+            if (entry.status === 'give' && typeof entry.timestamp === 'number') {
+                if (Date.now() - entry.timestamp < GIVE_CACHE_DURATION) return entry;
                 return null;
             }
-        } catch {}
-        return null;
+            return entry;
+        } catch { return null; }
     };
 
     const setCachedStatus = (devName, status) => {
         if (!loggedInDev || !status) return;
-        cakeStorage('set', `status-${loggedInDev}-${devName}`, JSON.stringify({
+        const key = getCacheKey(loggedInDev);
+        let cache = {};
+        try {
+            const raw = cakeStorage('get', key);
+            if (raw) cache = JSON.parse(raw);
+        } catch { cache = {}; }
+        cache[devName] = {
             status,
             timestamp: Date.now()
-        }));
+        };
+        cakeStorage('set', key, JSON.stringify(cache));
     };
 
     const clearCachedStatus = devName => {
         if (!loggedInDev) return;
-        cakeStorage('set', `status-${loggedInDev}-${devName}`, '');
+        const key = getCacheKey(loggedInDev);
+        try {
+            const raw = cakeStorage('get', key);
+            if (raw) {
+                const cache = JSON.parse(raw);
+                delete cache[devName];
+                cakeStorage('set', key, JSON.stringify(cache));
+            }
+        } catch {}
     };
 
     const cleanupOldCacheEntries = () => {
         if (!loggedInDev) return;
-        const prefix = `cake-status-${loggedInDev}-`;
-        const now = Date.now();
-        for (let i = localStorage.length - 1; i >= 0; i--) {
-            const key = localStorage.key(i);
-            if (key && key.startsWith(prefix)) {
-                try {
-                    const raw = localStorage.getItem(key);
-                    const data = JSON.parse(raw);
-                    if (data && data.status === 'enough') continue;
-                    if (data && data.status === 'give' && typeof data.timestamp === 'number') {
-                        if (now - data.timestamp >= GIVE_CACHE_DURATION) {
-                            localStorage.removeItem(key);
-                        }
-                    } else {
-                        localStorage.removeItem(key);
-                    }
-                } catch {
-                    localStorage.removeItem(key);
+
+        const lastKey = getCleanupLastKey(loggedInDev);
+        const last = parseInt(cakeStorage('get', lastKey) || '0');
+        if (Date.now() - last < 3600000) return;
+        cakeStorage('set', lastKey, String(Date.now()));
+
+        const key = getCacheKey(loggedInDev);
+        const raw = cakeStorage('get', key);
+        if (!raw) return;
+        try {
+            const cache = JSON.parse(raw);
+            const now = Date.now();
+            let changed = false;
+            for (const [devName, entry] of Object.entries(cache)) {
+                if (entry.status === 'give' && (now - entry.timestamp) >= GIVE_CACHE_DURATION) {
+                    delete cache[devName];
+                    changed = true;
                 }
             }
+            if (changed) {
+                cakeStorage('set', key, JSON.stringify(cache));
+            }
+        } catch {}
+    };
+
+    const migrateOldCacheEntries = () => {
+        if (!loggedInDev) return;
+        const flagKey = getMigrationFlagKey(loggedInDev);
+        if (cakeStorage('get', flagKey) === 'true') return;
+
+        const prefix1 = `cake-status-${loggedInDev}-`;
+        const prefix2 = `${loggedInDev}|`;
+
+        const toRemove = [];
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && (key.startsWith(prefix1) || key.startsWith(prefix2))) {
+                    toRemove.push(key);
+                }
+            }
+
+            for (const key of toRemove) {
+                localStorage.removeItem(key);
+            }
+
+            cakeStorage('set', flagKey, 'true');
+            if (toRemove.length > 0) {
+                console.log(`OCCB: Removed ${toRemove.length} old cache entries for ${loggedInDev}.`);
+            }
+        } catch (err) {
+            console.warn('OCCB migration encountered an error, will retry later:', err);
         }
     };
 
@@ -357,6 +412,7 @@
             const res = await fetch(statusUrl, {
                 credentials: 'include'
             });
+            if (res.status === 403) return { spamFilter: true };
             return await res.json();
         } catch {
             return null;
@@ -538,6 +594,33 @@
         return m?.[1] ? (lower ? m[1].toLowerCase() : m[1]) : null;
     };
 
+    const DEV_NAME_REGEX = /^[a-z0-9-]+$/i;
+    const isValidDevName = name => DEV_NAME_REGEX.test(name);
+
+    const isAvatarEl = el => {
+        if (el.querySelector('img')) return true;
+        for (const svg of el.querySelectorAll('svg')) {
+            const w = svg.getAttribute('width');
+            const h = svg.getAttribute('height');
+            if ((w && w !== '0') || (h && h !== '0')) return true;
+        }
+        return false;
+    };
+
+    const findOwnButton = (el, devName) => {
+        let sib = el.nextElementSibling;
+        if (sib?.classList?.contains('user-symbol')) {
+            sib = sib.nextElementSibling;
+        }
+        if (sib?.classList?.contains('oclb')) {
+            sib = sib.nextElementSibling;
+        }
+        if (sib?.classList?.contains('occb') && sib.getAttribute('data-cake-devname') === devName) {
+            return sib;
+        }
+        return null;
+    };
+
     const initCakeButton = (button, devName) => {
         button.onclick = cakeButtonClicked;
         if (Object.hasOwn(cakeLastStates, devName)) {
@@ -554,6 +637,7 @@
 
     let cakeButtonsToUpdate = {};
     let cakeDevIDs = {};
+    const networkRetries = {};
 
     const askServerForStatus = (button, devName) => {
         if (Object.hasOwn(cakeButtonsToUpdate, devName)) {
@@ -579,7 +663,53 @@
             if (devID) cakeDevIDs[devName] = devID;
             cakeButtonsToUpdate[devName].forEach(b => setButtonState(b, className, title));
             delete cakeButtonsToUpdate[devName];
+
+            if (className === 'unknown' && title === TITLES.unknown.err_network) {
+                scheduleNetworkRetry(devName);
+            } else {
+                clearNetworkRetry(devName);
+            }
         });
+    };
+
+    const clearNetworkRetry = devName => {
+        const state = networkRetries[devName];
+        if (!state) return;
+        if (state.timer) clearTimeout(state.timer);
+        delete networkRetries[devName];
+    };
+
+    const scheduleNetworkRetry = devName => {
+        const state = networkRetries[devName] || (networkRetries[devName] = { count: 0, timer: null });
+
+        if (state.timer) {
+            clearTimeout(state.timer);
+            state.timer = null;
+        }
+
+        if (state.count >= NETWORK_RETRY_MAX) {
+            delete networkRetries[devName];
+            return;
+        }
+
+        state.count++;
+
+        state.timer = setTimeout(() => {
+            state.timer = null;
+
+            const buttons = document.querySelectorAll(`span.occb[data-cake-devname="${devName}"]`);
+            if (buttons.length === 0) {
+                delete networkRetries[devName];
+                return;
+            }
+
+            delete cakeLastStates[devName];
+
+            for (const button of buttons) {
+                setButtonState(button, 'unknown', TITLES.unknown.loading);
+                askServerForStatus(button, devName);
+            }
+        }, NETWORK_RETRY_DELAY);
     };
 
     const getGiveMenu = (devName, callback) => {
@@ -594,8 +724,16 @@
                 fetch(url, {
                         credentials: 'include'
                     })
-                    .then(res => res.json())
+                    .then(res => {
+                        if (res.status === 403) {
+                            callback(0, 'spam', TITLES.spam);
+                            return null;
+                        }
+                        return res.json();
+                    })
                     .then(data => {
+                        if (data === null) return;
+
                         if (!data || typeof data.canGiveCake === 'undefined') {
                             callback(0, 'unknown', TITLES.unknown.err_server_response);
                             return;
@@ -615,30 +753,31 @@
             .catch(() => callback(0, 'token_miss', TITLES.token_miss));
     };
 
-    const addCakeButton = devNameLink => {
-        if (devNameLink.classList?.contains('banned')) return;
+    const insertButton = (btn, devNameLink) => {
+        const parent = devNameLink.parentNode;
+        if (!parent) return;
 
-        const isSpan = devNameLink.tagName.toLowerCase() === 'span';
-        const devName = isSpan ? devNameLink.innerText.toLowerCase() : getDevName(devNameLink, true);
-        const devNameReg = isSpan ? devNameLink.innerText : getDevName(devNameLink, false);
+        const isColumn = getComputedStyle(parent).flexDirection === 'column';
+        const alreadyWrapped = parent.classList.contains('oclb-row');
 
-        if (!devName || !loggedInDev || devName === loggedInDev) return;
-
-        if (devNameLink.parentNode?.querySelector(`span.occb[data-cake-devname="${devName}"]`)) return;
-
-        const btn = document.createElement('span');
-        btn.setAttribute('data-cake-devname', devName);
-        btn.setAttribute('data-cake-devname-reg', devNameReg);
-        btn.className = 'occb occb-unknown';
-        btn.style.pointerEvents = 'all';
-        btn.style.userSelect = 'none';
-
-        initCakeButton(btn, devName);
+        if (isColumn && !alreadyWrapped) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'oclb-row';
+            parent.insertBefore(wrapper, devNameLink);
+            if (setting('showPos') === 'before') {
+                wrapper.appendChild(btn);
+                wrapper.appendChild(devNameLink);
+            } else {
+                wrapper.appendChild(devNameLink);
+                wrapper.appendChild(btn);
+            }
+            return;
+        }
 
         const pos = setting('showPos') === 'before' ? 'before' : 'after';
         let ref;
 
-        const oclbButton = devNameLink.parentNode?.querySelector(`span.oclb[devName="${devName}"]`);
+        const oclbButton = parent.querySelector(`span.oclb[devName="${devNameLink.getAttribute('data-username')?.toLowerCase() || devNameLink.textContent.trim().toLowerCase()}"]`);
 
         if (pos === 'after') {
             ref = oclbButton ? oclbButton.nextSibling : devNameLink.nextSibling;
@@ -650,7 +789,32 @@
             ref = ref.nextSibling;
         }
 
-        devNameLink.parentNode?.insertBefore(btn, ref);
+        parent.insertBefore(btn, ref);
+    };
+
+    const addCakeButton = devNameLink => {
+        if (devNameLink.classList?.contains('banned')) return;
+
+        const isSpan = devNameLink.tagName.toLowerCase() === 'span';
+        if (isSpan && devNameLink.children.length > 0) return;
+
+        const devName = isSpan ? devNameLink.textContent.trim().toLowerCase() : getDevName(devNameLink, true);
+        const devNameReg = isSpan ? devNameLink.textContent.trim() : getDevName(devNameLink, false);
+
+        if (!devName || !isValidDevName(devName) || !loggedInDev || devName === loggedInDev) return;
+
+        if (findOwnButton(devNameLink, devName)) return;
+
+        const btn = document.createElement('span');
+        btn.setAttribute('data-cake-devname', devName);
+        btn.setAttribute('data-cake-devname-reg', devNameReg);
+        btn.className = 'occb occb-unknown';
+        btn.style.pointerEvents = 'all';
+        btn.style.userSelect = 'none';
+
+        initCakeButton(btn, devName);
+
+        insertButton(btn, devNameLink);
     };
 
     const usernameSelector =
@@ -659,67 +823,184 @@
         'a.username:not(.group), a[data-username]:not([data-usertype=group])';
 
     const badgesLinkSelector = 'a[href*=".deviantart.com/"][href*="/badges/"]';
-    const watchersSelector = '#watchers div > span';
-    const watchingSelector = '#watching div > span';
-    const membersSelector = '#group_members div > span';
-    const adminSelector = '#group_admins div > span';
+    const watchersSelector = 'section[data-module-type="watchers"] div > span';
+    const watchingSelector = 'section[data-module-type="watching"] div > span';
+    const activeMembersSelector = 'section[data-module-type="active_members"] div > span';
+    const newestMembersSelector = 'section[data-module-type="newest_members"] div > span';
+    const groupMembersSelector = 'section[data-module-type="group_members"] div > span';
+    const groupAdminsSelector = 'section[data-module-type="group_admins"] div > span';
 
     const allSelectors = [
         badgesLinkSelector,
         usernameSelector,
         watchersSelector,
         watchingSelector,
-        membersSelector,
-        adminSelector
+        activeMembersSelector,
+        newestMembersSelector,
+        groupMembersSelector,
+        groupAdminsSelector
     ];
 
     let scrollTimeout;
     let processThrottle;
     let scrollBindDebounce;
+    let pendingRoots = [];
+    let rootsThrottle = null;
 
     const isInOrNearViewport = el => {
         const rect = el.getBoundingClientRect();
         return rect.top < window.innerHeight + 1500 && rect.bottom > -1500;
     };
 
+    const collectCandidates = roots => {
+        const candidates = [];
+        const seen = new Set();
+
+        const consider = el => {
+            if (seen.has(el)) return;
+            seen.add(el);
+
+            const isSpan = el.tagName.toLowerCase() === 'span';
+            if (isSpan && el.children.length > 0) return;
+
+            const devName = isSpan ? el.textContent.trim().toLowerCase() : getDevName(el, true);
+            if (!devName || !isValidDevName(devName) || devName === loggedInDev) return;
+
+            candidates.push({
+                el,
+                devName,
+                isAvatar: isAvatarEl(el)
+            });
+        };
+
+        if (roots === null) {
+            allSelectors.forEach(sel => {
+                document.querySelectorAll(sel).forEach(consider);
+            });
+        } else {
+            for (const node of roots) {
+                if (node.nodeType !== 1) continue;
+                for (const sel of allSelectors) {
+                    if (node.matches?.(sel)) consider(node);
+                    if (node.querySelectorAll) {
+                        node.querySelectorAll(sel).forEach(consider);
+                    }
+                }
+            }
+        }
+
+        return candidates;
+    };
+
+    const partitionByAvatarPreference = candidates => {
+        const devsWithUsername = new Set();
+        for (const c of candidates) {
+            if (!c.isAvatar) devsWithUsername.add(c.devName);
+        }
+        const keep = [];
+        const skip = [];
+        for (const c of candidates) {
+            if (c.isAvatar && devsWithUsername.has(c.devName)) {
+                skip.push(c);
+            } else {
+                keep.push(c);
+            }
+        }
+        return { keep, skip };
+    };
+
+    const removeOwnButton = (el, devName) => {
+        const ownBtn = findOwnButton(el, devName);
+        if (ownBtn) ownBtn.remove();
+        el.removeAttribute('data-occb-found');
+    };
+
+    const flushPendingRoots = () => {
+        rootsThrottle = null;
+        const roots = pendingRoots;
+        pendingRoots = [];
+        if (roots.length === 0) return;
+
+        const candidates = collectCandidates(roots);
+        const { keep, skip } = partitionByAvatarPreference(candidates);
+
+        for (const c of skip) {
+            removeOwnButton(c.el, c.devName);
+        }
+
+        for (const c of keep) {
+            const { el, devName } = c;
+            const hasFound = el.getAttribute('data-occb-found');
+            const ownBtn = findOwnButton(el, devName);
+            const inViewport = isInOrNearViewport(el);
+
+            if (inViewport) {
+                if (!hasFound) {
+                    el.setAttribute('data-occb-found', '1');
+                    if (!ownBtn) {
+                        addCakeButton(el);
+                        const newBtn = findOwnButton(el, devName);
+                        if (newBtn) {
+                            newBtn.style.opacity = '0';
+                            newBtn.style.transition = 'opacity 0.3s ease';
+                            requestAnimationFrame(() => {
+                                newBtn.style.opacity = '1';
+                            });
+                        }
+                    }
+                }
+            } else if (ownBtn && !ownBtn._removing) {
+                ownBtn._removing = true;
+                ownBtn.classList.add('occb-removing');
+                setTimeout(() => {
+                    ownBtn.remove();
+                }, 200);
+                el.removeAttribute('data-occb-found');
+            }
+        }
+    };
+
     const processVisibleElements = () => {
         if (processThrottle) return;
         processThrottle = requestAnimationFrame(() => {
             processThrottle = null;
-            allSelectors.forEach(sel => {
-                document.querySelectorAll(sel).forEach(el => {
-                    const devName = el.tagName.toLowerCase() === 'span' ? el.textContent.toLowerCase() : getDevName(el, true);
-                    if (!devName || devName === loggedInDev) return;
+            const candidates = collectCandidates(null);
+            const { keep, skip } = partitionByAvatarPreference(candidates);
 
-                    const hasFound = el.getAttribute('data-occb-found');
-                    const existingBtn = el.parentNode?.querySelector(`span.occb[data-cake-devname="${devName}"]`);
-                    const inViewport = isInOrNearViewport(el);
+            for (const c of skip) {
+                removeOwnButton(c.el, c.devName);
+            }
 
-                    if (inViewport) {
-                        if (!hasFound) {
-                            el.setAttribute('data-occb-found', '1');
-                            if (!existingBtn) {
-                                addCakeButton(el);
-                                const btn = el.parentNode?.querySelector(`span.occb[data-cake-devname="${devName}"]`);
-                                if (btn) {
-                                    btn.style.opacity = '0';
-                                    btn.style.transition = 'opacity 0.3s ease';
-                                    requestAnimationFrame(() => {
-                                        btn.style.opacity = '1';
-                                    });
-                                }
+            for (const c of keep) {
+                const { el, devName } = c;
+                const hasFound = el.getAttribute('data-occb-found');
+                const ownBtn = findOwnButton(el, devName);
+                const inViewport = isInOrNearViewport(el);
+
+                if (inViewport) {
+                    if (!hasFound) {
+                        el.setAttribute('data-occb-found', '1');
+                        if (!ownBtn) {
+                            addCakeButton(el);
+                            const newBtn = findOwnButton(el, devName);
+                            if (newBtn) {
+                                newBtn.style.opacity = '0';
+                                newBtn.style.transition = 'opacity 0.3s ease';
+                                requestAnimationFrame(() => {
+                                    newBtn.style.opacity = '1';
+                                });
                             }
                         }
-                    } else if (existingBtn && !existingBtn._removing) {
-                        existingBtn._removing = true;
-                        existingBtn.classList.add('occb-removing');
-                        setTimeout(() => {
-                            existingBtn.remove();
-                        }, 200);
-                        el.removeAttribute('data-occb-found');
                     }
-                });
-            });
+                } else if (ownBtn && !ownBtn._removing) {
+                    ownBtn._removing = true;
+                    ownBtn.classList.add('occb-removing');
+                    setTimeout(() => {
+                        ownBtn.remove();
+                    }, 200);
+                    el.removeAttribute('data-occb-found');
+                }
+            }
         });
     };
 
@@ -770,27 +1051,13 @@
 
     const observeDOMChanges = () => {
         const observer = new MutationObserver(mutations => {
-            mutations.forEach(m => {
-                m.addedNodes.forEach(node => {
-                    if (node.nodeType !== 1) return;
-                    allSelectors.forEach(sel => {
-                        if (node.matches?.(sel)) {
-                            if (!node.getAttribute('data-occb-found') && isInOrNearViewport(node)) {
-                                node.setAttribute('data-occb-found', '1');
-                                addCakeButton(node);
-                            }
-                        }
-                        if (node.querySelectorAll) {
-                            node.querySelectorAll(sel).forEach(el => {
-                                if (!el.getAttribute('data-occb-found') && isInOrNearViewport(el)) {
-                                    el.setAttribute('data-occb-found', '1');
-                                    addCakeButton(el);
-                                }
-                            });
-                        }
-                    });
-                });
-            });
+            for (const m of mutations) {
+                for (const node of m.addedNodes) {
+                    if (node.nodeType === 1) pendingRoots.push(node);
+                }
+            }
+            if (pendingRoots.length === 0 || rootsThrottle) return;
+            rootsThrottle = requestAnimationFrame(flushPendingRoots);
         });
         observer.observe(document.body, {
             childList: true,
@@ -802,7 +1069,15 @@
         loggedInDev = await waitForLoggedInDevName();
         if (!loggedInDev) return;
 
-        cleanupOldCacheEntries();
+        const doMigrationAndCleanup = () => {
+            migrateOldCacheEntries();
+            cleanupOldCacheEntries();
+        };
+        if (window.requestIdleCallback) {
+            requestIdleCallback(doMigrationAndCleanup);
+        } else {
+            setTimeout(doMigrationAndCleanup, 0);
+        }
 
         addCSS(STYLE);
         if (setting('animation') !== 'true') addCSS('span.occb{transition:none}');
@@ -838,7 +1113,15 @@
                     return null;
                 })();
                 if (loggedInDev) {
-                    cleanupOldCacheEntries();
+                    const doMigrationAndCleanup = () => {
+                        migrateOldCacheEntries();
+                        cleanupOldCacheEntries();
+                    };
+                    if (window.requestIdleCallback) {
+                        requestIdleCallback(doMigrationAndCleanup);
+                    } else {
+                        setTimeout(doMigrationAndCleanup, 0);
+                    }
 
                     addCSS(STYLE);
                     if (setting('animation') !== 'true') addCSS('span.occb{transition:none}');
